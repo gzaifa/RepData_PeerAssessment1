@@ -1,3 +1,7 @@
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=TRUE)
+```
 ---
 title: "Reproducible Research: Peer Assessment 1"
 output: 
@@ -5,21 +9,130 @@ output:
     keep_md: true
 ---
 
-
 ## Loading and preprocessing the data
 
+```{r}
+if(!file.exists("repdata-data-activity.zip")) {
+  download.file(url = "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip", destfile = "repdata_data_activity.zip")  
+}
+if(!file.exists("activity.csv")) {
+  unzip("repdata-data-activity.zip")
+}
+
+actData <- read.csv("activity.csv", header = TRUE)
+```
 
 
 ## What is mean total number of steps taken per day?
+###1. Calculate the mean total number of steps taken per day by aggregating steps by date.
+```{r}
+stepsByDay <- aggregate(steps ~ date, actData, sum, na.action=na.omit)
+stepsByDay
+```
 
+Make a histogram of the mean total number of steps taken per day
+```{r}
+library(ggplot2)
+ggplot(stepsByDay, aes(x = steps, fill=..count..)) + 
+       geom_histogram(binwidth = 1000) + 
+        labs(title="Histogram of Steps Taken per Day", 
+             x = "Number of Steps per Day", y = "Number of times(Count)") + theme_bw() 
+```
+
+Calculate and report the mean and medium of the total number of steps taken per day
+```{r}
+stepsMean   <- mean(stepsByDay$steps, na.rm=TRUE)
+stepsMedian <- median(stepsByDay$steps, na.rm=TRUE)
+```
+The mean is 10766.19.
+The medium is 10765.
 
 
 ## What is the average daily activity pattern?
+###1. Calculate the average daily activity pattern by aggregating steps by interval.
+```{r}
+averages <- aggregate(steps ~ interval, actData, mean, na.action = na.omit)
+ggplot(averages, aes(x=interval, y=steps)) +   
+         geom_line(color="green", size=1) +  
+         labs(title="Average Daily Activity Pattern", x="Time(Interval)", y="Number of steps") +  
+         theme_bw()
+```
 
-
+###2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+```{r}
+averages[which.max(averages$steps),]
+```
 
 ## Imputing missing values
+###1. Calculate and report the total number of missing values in the dataset (i.e. the total number of row with NAs)
+```{r}
+missingValues <- is.na(actData$steps)
+table(missingValues)
+```
+The number of missing values is represented by TRUE.
 
+###2. Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/medium for that day, or the mean for that 5-min interval, etc.
+The mean for the particular 5-min interval is used to fill in all of the missing values.
+
+###3. Create a new dataset that is equal to the original dataset but with the missing data filled in.
+```{r}
+impData <- actData
+for (i in 1:nrow(impData)) {
+    if (is.na(impData$steps[i])) {
+        impData$steps[i] <- averages[which(impData$interval[i] == averages$interval), ]$steps
+    }
+}
+
+table(is.na(impData$steps))
+```
+We see that the table shows 17568 FALSE. All na values have been removed.
+
+###4. Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+```{r}
+newStepsByDay <- aggregate(steps ~ date, impData, sum, na.action=na.omit)
+ggplot(newStepsByDay, aes(x = steps, fill=..count..)) + 
+       geom_histogram(binwidth = 1000) + 
+        labs(title="Histogram of Steps Taken per Day", 
+             x = "Number of Steps per Day", y = "Number of times(Count)") + theme_bw() 
+
+mean(newStepsByDay$steps, na.rm=TRUE)
+median(newStepsByDay$steps, na.rm=TRUE)
+```
+The mean is the same as before imputing missing data whereas the medium is just slightly higher.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+Create a new column depicting whether it is a weekday or weekend.
+```{r}
+#Cast to date type
+impData$date <- as.Date(impData$date, "%Y-%m-%d")
+
+#the weekdays function will help us determine the day of the week of the date
+impData$dayOfWeek <- weekdays(impData$date)
+
+#initialise a dayType column
+impData$dayType <- c("daytype?")
+
+#assign "weekend" or "weekday" to the dayType column according to day of the week.
+for(i in 1:nrow(impData)) {
+  if(impData$dayOfWeek[i] == "Saturday" || impData$dayOfWeek[i] == "Sunday") {
+    impData$dayType[i] <- "weekend"
+  } else {
+    impData$dayType[i] <- "weekday"
+  }
+}
+
+#cast the dayType as a factor.
+impData$dayType <- as.factor(impData$dayType)
+
+#now we can aggregate according to the dayType (weekend or weekday)
+averagesByDayType <- aggregate(steps ~ interval + dayType, impData, mean, na.action = na.omit)
+
+ggplot(averagesByDayType, aes(x=interval, y=steps)) +   
+         geom_line(color="green", size=1) +  
+         facet_grid(dayType ~ .) +
+         labs(title="Average Daily Activity Pattern", x="Time(Interval)", y="Number of steps") +  
+         theme_bw()
+
+```
+From the plot, we can see that people are active later during the weekends, probably due to the fact that they sleep in. The peak in activity for both weekends and weekdays are just before 1000hrs. Generally people are more active during the weekend throughout the day, this could be due to the fact that they are in a deskbound job during weekdays.
